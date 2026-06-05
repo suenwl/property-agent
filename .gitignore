@@ -1,2 +1,7 @@
 .env
 .venv
+
+# Next.js
+app/.env.local
+app/.next/
+app/node_modules/
