@@ -98,14 +98,14 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
         ? `$${(property.price / 1000).toFixed(0)}K`
         : "";
 
-      marker.bindPopup(`
+      marker.bindTooltip(`
         <div style="min-width:160px">
           <strong style="font-size:13px">${property.property_name ?? property.address}</strong>
           <br/><span style="color:#666;font-size:12px">${property.town}</span>
           <br/><strong style="color:#222;font-size:13px">${price}</strong>
           <br/><span style="font-size:12px">${property.bedrooms} bed · ${property.bathrooms} bath · ${property.size_sqft.toLocaleString()} sqft</span>
         </div>
-      `);
+      `, { sticky: false });
 
       marker.on("click", () => {
         const p = propertiesRef.current.find((x) => x._id === property._id);
@@ -144,7 +144,6 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
     for (const [id, marker] of markersRef.current.entries()) {
       marker.setIcon(id === selectedId ? selectedIcon : defaultIcon);
       if (id === selectedId) {
-        marker.openPopup();
         mapRef.current?.panTo(marker.getLatLng(), { animate: true });
       }
     }
