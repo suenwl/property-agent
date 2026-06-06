@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PropertyDoc } from "@/types";
 
 // Leaflet must only run in the browser — dynamic import guards SSR
@@ -43,6 +43,9 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
   const markersRef = useRef<Map<string, any>>(new Map());
   const propertiesRef = useRef(properties);
   const onSelectRef = useRef(onSelect);
+  // Tracks whether the Leaflet map instance is ready so the marker sync
+  // effect re-runs after initialization even if `properties` hasn't changed.
+  const [mapReady, setMapReady] = useState(false);
 
   // Keep callback ref up to date without re-running effect
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
@@ -63,9 +66,26 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
       maxZoom: 19,
     }).addTo(mapRef.current);
 
+    setMapReady(true);
+
+    // The map is often created (via the dynamic import) before its flex
+    // container has finished layout, so Leaflet measures it as 0×0 and tiles
+    // / markers never paint until a resize fires invalidateSize internally
+    // (e.g. opening devtools). A ResizeObserver fixes this for every case.
+    const observer = new ResizeObserver(() => {
+      mapRef.current?.invalidateSize();
+    });
+    observer.observe(containerRef.current);
+
     return () => {
+      observer.disconnect();
       mapRef.current?.remove();
       mapRef.current = null;
+      // The markers belonged to the now-destroyed map. Clear the cache so the
+      // marker-sync effect re-creates them on the next map instance (important
+      // for React Strict Mode's mount → unmount → remount cycle in dev).
+      markersRef.current.clear();
+      setMapReady(false);
     };
   }, []);
 
@@ -127,7 +147,7 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
         map.setView([first.location.lat, first.location.lon], 14);
       }
     }
-  }, [properties]);
+  }, [properties, mapReady]);
 
   // Highlight selected marker
   useEffect(() => {
