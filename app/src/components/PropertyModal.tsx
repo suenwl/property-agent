@@ -53,7 +53,7 @@ export function PropertyModal({ property, onClose }: PropertyModalProps) {
 
   return (
     <Dialog open={!!property} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-start gap-2 pr-4">
             <div className="flex-1 min-w-0">
