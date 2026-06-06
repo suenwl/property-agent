@@ -5,7 +5,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizonal, Bot, User, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types";
@@ -48,7 +47,7 @@ export function ChatPanel({
       </div>
 
       {/* Message history */}
-      <ScrollArea className="flex-1 px-4">
+      <div className="flex-1 overflow-y-auto px-4">
         <div className="py-4 space-y-4">
           {messages.length === 0 && (
             <div className="text-center text-sm text-muted-foreground py-8 space-y-2">
@@ -117,7 +116,7 @@ export function ChatPanel({
 
           <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="px-4 py-3 border-t">
