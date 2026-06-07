@@ -146,7 +146,7 @@ export default function SearchPage() {
         {/* Nav */}
         <div className="flex items-center px-4 h-12 border-b bg-background">
           <span className="font-semibold text-sm tracking-tight">
-            Property Agent
+            PropertyAgent
           </span>
         </div>
 
