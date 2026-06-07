@@ -259,6 +259,7 @@ export function FiltersPanel({
           onChange={(v) => update({ town: v.length === 0 ? null : v })}
           placeholder="Town / Area"
           allLabel="All areas"
+          countLabel="towns"
           className="w-[130px]"
         />
 
@@ -280,6 +281,7 @@ export function FiltersPanel({
           }
           placeholder="Furnishing"
           allLabel="Any furnishing"
+          countLabel="types"
           className="w-[140px]"
         />
 

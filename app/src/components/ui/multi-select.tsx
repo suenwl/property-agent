@@ -15,6 +15,8 @@ interface MultiSelectFilterProps {
   onChange: (values: string[]) => void;
   placeholder: string;
   allLabel: string;
+  /** Noun used in the "N <countLabel> selected" label, e.g. "towns" */
+  countLabel?: string;
   className?: string;
 }
 
@@ -24,6 +26,7 @@ export function MultiSelectFilter({
   onChange,
   placeholder,
   allLabel,
+  countLabel,
   className,
 }: MultiSelectFilterProps) {
   const [open, setOpen] = useState(false);
@@ -49,6 +52,8 @@ export function MultiSelectFilter({
       ? placeholder
       : value.length === 1
       ? value[0]
+      : countLabel
+      ? `${value.length} ${countLabel} selected`
       : `${value.length} selected`;
 
   return (
