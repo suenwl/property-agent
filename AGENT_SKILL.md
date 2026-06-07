@@ -31,7 +31,9 @@ Set a field to null if the user did not mention it. Do not infer values the user
   "furnishing": "Unfurnished" | "Partially Furnished" | "Fully Furnished" | null,
   "pets_allowed": true | false | null,
   "size_sqft_min": <integer or null>,
-  "flat_type": "2-Room Flexi" | "3-Room" | "4-Room" | "5-Room" | "Executive" | null
+  "flat_type": "2-Room Flexi" | "3-Room" | "4-Room" | "5-Room" | "Executive" | null,
+  "built_year_min": <4-digit integer year or null>,
+  "built_year_max": <4-digit integer year or null>
 }
 
 Valid Singapore planning area names for the `town` field:
@@ -61,7 +63,36 @@ for rental at up to $3,000/month in Tampines...
   "furnishing": null,
   "pets_allowed": null,
   "size_sqft_min": null,
-  "flat_type": null
+  "flat_type": null,
+  "built_year_min": null,
+  "built_year_max": null
+}
+```
+```
+
+Example:
+User: "Show me private condos built after 2010"
+
+Response:
+Here are private condos completed from 2010 onwards...
+
+```json
+{
+  "listing_type": null,
+  "property_category": "private",
+  "bedrooms_min": null,
+  "bedrooms_max": null,
+  "price_per_month_min": null,
+  "price_per_month_max": null,
+  "price_min": null,
+  "price_max": null,
+  "town": null,
+  "furnishing": null,
+  "pets_allowed": null,
+  "size_sqft_min": null,
+  "flat_type": null,
+  "built_year_min": 2010,
+  "built_year_max": null
 }
 ```
 ```
