@@ -8,10 +8,12 @@ export interface FilterState {
   price_min: number | null;
   price_max: number | null;
   town: string[] | null;
-  furnishing: "Unfurnished" | "Partially Furnished" | "Fully Furnished" | null;
+  furnishing: Array<"Unfurnished" | "Partially Furnished" | "Fully Furnished"> | null;
   pets_allowed: boolean | null;
   size_sqft_min: number | null;
   flat_type: string | null;
+  built_year_min: number | null;
+  built_year_max: number | null;
 }
 
 export interface PropertyDoc {

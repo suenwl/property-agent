@@ -14,6 +14,8 @@ const FILTER_KEYS: (keyof FilterState)[] = [
   "pets_allowed",
   "size_sqft_min",
   "flat_type",
+  "built_year_min",
+  "built_year_max",
 ];
 
 /**
@@ -56,13 +58,21 @@ export function parseAgentResponse(raw: string): {
       pets_allowed: null,
       size_sqft_min: null,
       flat_type: null,
+      built_year_min: null,
+      built_year_max: null,
     };
 
     for (const key of FILTER_KEYS) {
       const val = parsed[key];
       if (val !== undefined && val !== null) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (filters as any)[key] = val;
+        // Normalise array fields: agent may return a single string instead of an array
+        if ((key === "furnishing" || key === "town") && typeof val === "string") {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (filters as any)[key] = [val];
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (filters as any)[key] = val;
+        }
       }
     }
 

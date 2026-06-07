@@ -20,8 +20,8 @@ export function buildEsQuery(filters: Partial<FilterState>): ESClause {
     must.push({ terms: { "town.keyword": filters.town } });
   }
 
-  if (filters.furnishing) {
-    must.push({ term: { "furnishing.keyword": filters.furnishing } });
+  if (filters.furnishing && filters.furnishing.length > 0) {
+    must.push({ terms: { "furnishing.keyword": filters.furnishing } });
   }
 
   if (filters.pets_allowed !== null && filters.pets_allowed !== undefined) {
@@ -61,6 +61,14 @@ export function buildEsQuery(filters: Partial<FilterState>): ESClause {
   if (filters.price_max != null) saleRange.lte = filters.price_max;
   if (Object.keys(saleRange).length > 0) {
     must.push({ range: { price: saleRange } });
+  }
+
+  // Completion year range
+  const yearRange: ESClause = {};
+  if (filters.built_year_min != null) yearRange.gte = filters.built_year_min;
+  if (filters.built_year_max != null) yearRange.lte = filters.built_year_max;
+  if (Object.keys(yearRange).length > 0) {
+    must.push({ range: { built_year: yearRange } });
   }
 
   if (must.length === 0) {

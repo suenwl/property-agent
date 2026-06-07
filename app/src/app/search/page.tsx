@@ -28,6 +28,8 @@ const EMPTY_FILTERS: FilterState = {
   pets_allowed: null,
   size_sqft_min: null,
   flat_type: null,
+  built_year_min: null,
+  built_year_max: null,
 };
 
 export default function SearchPage() {

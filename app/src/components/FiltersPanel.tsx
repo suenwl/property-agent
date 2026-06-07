@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -7,10 +8,110 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MultiSelectFilter } from "@/components/ui/multi-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { X, SlidersHorizontal } from "lucide-react";
+import { X, SlidersHorizontal, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { FilterState } from "@/types";
+
+const CURRENT_YEAR = new Date().getFullYear();
+
+interface YearRangeFilterProps {
+  minYear: number | null;
+  maxYear: number | null;
+  onChange: (min: number | null, max: number | null) => void;
+}
+
+function YearRangeFilter({ minYear, maxYear, onChange }: YearRangeFilterProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const hasValue = minYear !== null || maxYear !== null;
+
+  let label = "Completion year";
+  if (minYear !== null && maxYear !== null) label = `${minYear}–${maxYear}`;
+  else if (minYear !== null) label = `From ${minYear}`;
+  else if (maxYear !== null) label = `Up to ${maxYear}`;
+
+  function handleMinChange(raw: string) {
+    const val = raw === "" ? null : Math.max(1900, Math.min(CURRENT_YEAR + 10, Number(raw)));
+    onChange(val, maxYear);
+  }
+
+  function handleMaxChange(raw: string) {
+    const val = raw === "" ? null : Math.max(1900, Math.min(CURRENT_YEAR + 10, Number(raw)));
+    onChange(minYear, val);
+  }
+
+  return (
+    <div ref={containerRef} className="relative w-[150px]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="h-7 py-2 pr-2 pl-2.5 text-xs flex items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent whitespace-nowrap transition-colors outline-none select-none w-full cursor-default"
+      >
+        <span className={cn("truncate flex-1 text-left", !hasValue && "text-muted-foreground")}>
+          {label}
+        </span>
+        {hasValue ? (
+          <X
+            className="size-4 shrink-0 text-muted-foreground pointer-events-auto cursor-default"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(null, null);
+            }}
+          />
+        ) : (
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground pointer-events-none" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-popover text-popover-foreground rounded-lg shadow-md ring-1 ring-foreground/10 p-3 w-48">
+          <p className="text-xs font-medium text-muted-foreground mb-2">Completion year</p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground mb-1 block">From</label>
+              <input
+                type="number"
+                min={1900}
+                max={CURRENT_YEAR + 10}
+                placeholder="e.g. 2000"
+                value={minYear ?? ""}
+                onChange={(e) => handleMinChange(e.target.value)}
+                className="w-full h-7 rounded-md border border-input bg-transparent px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground mb-1 block">To</label>
+              <input
+                type="number"
+                min={1900}
+                max={CURRENT_YEAR + 10}
+                placeholder={`e.g. ${CURRENT_YEAR}`}
+                value={maxYear ?? ""}
+                onChange={(e) => handleMaxChange(e.target.value)}
+                className="w-full h-7 rounded-md border border-input bg-transparent px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TOWNS = [
   "Ang Mo Kio", "Bedok", "Bishan", "Bukit Batok", "Bukit Merah",
@@ -151,41 +252,36 @@ export function FiltersPanel({
           </Select>
         )}
 
-        {/* Town */}
-        <Select
-          value={filters.town?.[0] ?? ""}
-          onValueChange={(v) =>
-            update({ town: v === "" ? null : ([v] as string[]) })
-          }
-        >
-          <SelectTrigger className="h-7 text-xs w-[130px]">
-            <SelectValue placeholder="Town / Area" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All areas</SelectItem>
-            {TOWNS.map((t) => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Town — multi-select */}
+        <MultiSelectFilter
+          options={TOWNS.map((t) => ({ value: t, label: t }))}
+          value={filters.town ?? []}
+          onChange={(v) => update({ town: v.length === 0 ? null : v })}
+          placeholder="Town / Area"
+          allLabel="All areas"
+          className="w-[130px]"
+        />
 
-        {/* Furnishing */}
-        <Select
-          value={filters.furnishing ?? ""}
-          onValueChange={(v) =>
-            update({ furnishing: v === "" ? null : (v as FilterState["furnishing"]) })
+        {/* Furnishing — multi-select */}
+        <MultiSelectFilter
+          options={[
+            { value: "Unfurnished", label: "Unfurnished" },
+            { value: "Partially Furnished", label: "Partial" },
+            { value: "Fully Furnished", label: "Fully furnished" },
+          ]}
+          value={filters.furnishing ?? []}
+          onChange={(v) =>
+            update({
+              furnishing:
+                v.length === 0
+                  ? null
+                  : (v as FilterState["furnishing"]),
+            })
           }
-        >
-          <SelectTrigger className="h-7 text-xs w-[140px]">
-            <SelectValue placeholder="Furnishing" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Any furnishing</SelectItem>
-            <SelectItem value="Unfurnished">Unfurnished</SelectItem>
-            <SelectItem value="Partially Furnished">Partial</SelectItem>
-            <SelectItem value="Fully Furnished">Fully furnished</SelectItem>
-          </SelectContent>
-        </Select>
+          placeholder="Furnishing"
+          allLabel="Any furnishing"
+          className="w-[140px]"
+        />
 
         {/* HDB flat type */}
         {filters.property_category === "hdb" && (
@@ -225,6 +321,13 @@ export function FiltersPanel({
             </SelectContent>
           </Select>
         )}
+
+        {/* Completion year range */}
+        <YearRangeFilter
+          minYear={filters.built_year_min}
+          maxYear={filters.built_year_max}
+          onChange={(min, max) => update({ built_year_min: min, built_year_max: max })}
+        />
 
         {/* Clear + result count */}
         <div className="ml-auto flex items-center gap-2 flex-shrink-0">
