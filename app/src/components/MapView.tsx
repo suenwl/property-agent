@@ -9,19 +9,27 @@ let L: typeof import("leaflet") | null = null;
 if (typeof window !== "undefined") {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   L = require("leaflet");
-  // Patch default marker icon paths broken by webpack
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const icons = require("leaflet/dist/images/marker-icon.png");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const icons2x = require("leaflet/dist/images/marker-icon-2x.png");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const shadow = require("leaflet/dist/images/marker-shadow.png");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (L!.Icon.Default.prototype as any)._getIconUrl;
-  L!.Icon.Default.mergeOptions({
-    iconUrl: icons.default ?? icons,
-    iconRetinaUrl: icons2x.default ?? icons2x,
-    shadowUrl: shadow.default ?? shadow,
+}
+
+// Returns the relevant price for color-coding (rental = monthly, sale = total)
+function getEffectivePrice(property: PropertyDoc): number | null {
+  if (property.listing_type === "rental") return property.price_per_month ?? null;
+  return property.price ?? null;
+}
+
+// Maps a normalised value t ∈ [0, 1] (cheap→expensive) to a CSS hsl color
+// green (120°) → orange (30°) → red (0°)
+function priceToColor(t: number): string {
+  const hue = Math.round(120 * (1 - t));
+  return `hsl(${hue}, 80%, 40%)`;
+}
+
+function makePinIcon(L: typeof import("leaflet"), color: string, size = 16) {
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2.5px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -41,6 +49,8 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
   const mapRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersRef = useRef<Map<string, any>>(new Map());
+  // Stores the computed color for each marker so the selection effect can restore it
+  const markerColorsRef = useRef<Map<string, string>>(new Map());
   const propertiesRef = useRef(properties);
   const onSelectRef = useRef(onSelect);
   // Tracks whether the Leaflet map instance is ready so the marker sync
@@ -61,9 +71,11 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
       zoomControl: true,
     });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: "abcd",
+      maxZoom: 20,
     }).addTo(mapRef.current);
 
     setMapReady(true);
@@ -101,15 +113,43 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
       if (!currentIds.has(id)) {
         marker.remove();
         markersRef.current.delete(id);
+        markerColorsRef.current.delete(id);
       }
     }
 
-    // Add new markers
+    // Compute price range per (listing_type × town) so colours reflect value
+    // relative to comparable properties in the same estate and category.
+    const groupBounds = new Map<string, { min: number; max: number }>();
     for (const property of properties) {
-      if (markersRef.current.has(property._id)) continue;
+      const p = getEffectivePrice(property);
+      if (p === null) continue;
+      const key = `${property.listing_type}::${property.town}`;
+      const g = groupBounds.get(key);
+      if (!g) groupBounds.set(key, { min: p, max: p });
+      else { g.min = Math.min(g.min, p); g.max = Math.max(g.max, p); }
+    }
+
+    // Add new markers (remove & re-add existing ones so colours update with new range)
+    for (const property of properties) {
+      // Remove stale marker so it gets recreated with the updated colour
+      const existing = markersRef.current.get(property._id);
+      if (existing) {
+        existing.remove();
+        markersRef.current.delete(property._id);
+      }
 
       const { lat, lon } = property.location;
-      const marker = L.marker([lat, lon]);
+
+      const effectivePrice = getEffectivePrice(property);
+      const key = `${property.listing_type}::${property.town}`;
+      const g = groupBounds.get(key);
+      const range = g ? (g.max - g.min || 1) : 1;
+      const t = effectivePrice !== null && g ? (effectivePrice - g.min) / range : 0.5;
+      const color = priceToColor(t);
+      markerColorsRef.current.set(property._id, color);
+
+      const Lib = L;
+      const marker = Lib.marker([lat, lon], { icon: makePinIcon(Lib, color) });
 
       const isRental = property.listing_type === "rental";
       const price = isRental && property.price_per_month
@@ -149,20 +189,18 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
     }
   }, [properties, mapReady]);
 
-  // Highlight selected marker
+  // Highlight selected marker — keep its price colour, just make it bigger
   useEffect(() => {
     if (!L) return;
-
-    const selectedIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:20px;height:20px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    });
-    const defaultIcon = new L.Icon.Default();
+    const Lib = L;
 
     for (const [id, marker] of markersRef.current.entries()) {
-      marker.setIcon(id === selectedId ? selectedIcon : defaultIcon);
+      const color = markerColorsRef.current.get(id) ?? "hsl(60, 80%, 40%)";
+      marker.setIcon(
+        id === selectedId
+          ? makePinIcon(Lib, color, 24)
+          : makePinIcon(Lib, color, 16),
+      );
       if (id === selectedId) {
         mapRef.current?.panTo(marker.getLatLng(), { animate: true });
       }
