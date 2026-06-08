@@ -16,13 +16,14 @@ import type { FilterState } from "@/types";
 const APP_NAME = "property-agent";
 const USER_ID = "default";
 
-const MCP_TOOL_FILTER = [
-  "platform.core.generate_esql",
-  "platform.core.execute_esql",
-  "platform.core.get_index_mapping",
-  "platform.core.search",
-  "platform.core.get_document",
-];
+// Uncomment to restrict tools; leave undefined to load all MCP tools (useful for debugging)
+// const MCP_TOOL_FILTER = [
+//   "platform.core.generate_esql",
+//   "platform.core.execute_esql",
+//   "platform.core.get_index_mapping",
+//   "platform.core.search",
+//   "platform.core.get_document",
+// ];
 
 // ---------------------------------------------------------------------------
 // Combined agent instruction
@@ -255,20 +256,20 @@ function getRunner(): InMemoryRunner {
     throw new Error("KIBANA_URL and ELASTIC_AGENT_API_KEY must be configured");
   }
 
-  const mcpToolset = new MCPToolset(
-    {
-      type: "StreamableHTTPConnectionParams",
-      url: `${kibanaUrl.replace(/\/$/, "")}/api/agent_builder/mcp`,
-      transportOptions: {
-        requestInit: {
-          headers: {
-            Authorization: `ApiKey ${elasticApiKey}`,
-          },
+  const mcpUrl = `${kibanaUrl.replace(/\/$/, "")}/api/agent_builder/mcp`;
+  console.log("[ADK] Connecting to Kibana MCP at:", mcpUrl);
+
+  const mcpToolset = new MCPToolset({
+    type: "StreamableHTTPConnectionParams",
+    url: mcpUrl,
+    transportOptions: {
+      requestInit: {
+        headers: {
+          Authorization: `ApiKey ${elasticApiKey}`,
         },
       },
     },
-    MCP_TOOL_FILTER
-  );
+  });
 
   const agent = new Agent({
     name: "property_agent",
@@ -321,6 +322,20 @@ export async function runAgent(
   let filters: FilterState | null = null;
 
   for await (const event of events) {
+    // Temporary debug: log every event to diagnose tool calls and responses
+    console.log("[ADK:event]", JSON.stringify({
+      author: event.author,
+      errorCode: event.errorCode,
+      isFinal: isFinalResponse(event),
+      parts: event.content?.parts?.map((p) => {
+        if (p.thought) return { type: "thought" };
+        if (p.text) return { type: "text", text: p.text.slice(0, 200) };
+        if (p.functionCall) return { type: "functionCall", name: p.functionCall.name, args: p.functionCall.args };
+        if (p.functionResponse) return { type: "functionResponse", name: p.functionResponse.name, response: JSON.stringify(p.functionResponse.response).slice(0, 500) };
+        return { type: "other" };
+      }),
+    }));
+
     // Surface ADK/Gemini errors immediately
     if (event.errorCode) {
       throw new Error(
