@@ -1,33 +1,23 @@
 import { NextResponse } from "next/server";
 import type { PropertyDoc } from "@/types";
+import { ensureSession, runAgent } from "@/lib/propertyAgent";
 
 /*
- * Proxies property-valuation questions to the Elastic Agent Builder converse API.
+ * Proxies property-valuation questions to the ADK agent (Gemini + Kibana MCP).
+ *
  * Unlike /api/chat, this route:
  *   1. Accepts an optional `property` object in the request body.
  *   2. On the first turn (conversationId === null), prepends a [Property Context]
- *      block to the user message so the agent has full listing details without the
- *      user having to type them.
- *   3. Never parses filter JSON from the response — valuation replies are plain text.
+ *      block to the user message so the agent has full listing details.
+ *   3. Never returns filter data — valuation replies are plain text.
  *
- * Uses the same KIBANA_URL / ELASTIC_AGENT_ID / ELASTIC_AGENT_API_KEY env vars as
- * the main chat route. The valuation skill is added to the same agent's system prompt
- * via PROPERTY_VALUATION.md.
+ * Required environment variables: same as /api/chat.
  */
 
 interface RequestBody {
   message: string;
   conversationId: string | null;
   property: PropertyDoc | null;
-}
-
-interface ElasticConverseResponse {
-  conversation_id: string;
-  round_id: string;
-  status: string;
-  response: {
-    message: string;
-  };
 }
 
 function buildPropertyContext(property: PropertyDoc): string {
@@ -69,7 +59,9 @@ function buildPropertyContext(property: PropertyDoc): string {
   ];
 
   if (property.bedrooms) {
-    lines.push(`Bedrooms: ${property.bedrooms}  |  Bathrooms: ${property.bathrooms}`);
+    lines.push(
+      `Bedrooms: ${property.bedrooms}  |  Bathrooms: ${property.bathrooms}`
+    );
   }
   if (property.hdb_estate) {
     lines.push(`HDB Estate: ${property.hdb_estate}`);
@@ -88,61 +80,19 @@ export async function POST(request: Request) {
   const { message, conversationId, property }: RequestBody =
     await request.json();
 
-  const kibanaUrl = process.env.KIBANA_URL;
-  const agentId = process.env.ELASTIC_AGENT_ID;
-  const apiKey = process.env.ELASTIC_AGENT_API_KEY;
+  const sessionId = conversationId ?? crypto.randomUUID();
 
-  if (!kibanaUrl || !agentId || !apiKey) {
-    return NextResponse.json(
-      {
-        error:
-          "KIBANA_URL, ELASTIC_AGENT_ID and ELASTIC_AGENT_API_KEY must be configured",
-      },
-      { status: 500 }
-    );
-  }
-
-  const endpoint = `${kibanaUrl.replace(/\/$/, "")}/api/agent_builder/converse`;
-
-  // On the first turn, prepend the property context block so the agent has
-  // full listing details without the user needing to type them.
+  // On the first turn, prepend the property context so the agent has full
+  // listing details without the user needing to type them.
   let input = message;
   if (!conversationId && property) {
     const context = buildPropertyContext(property);
     input = `${context}\n\nUser question: ${message}`;
   }
 
-  const body: Record<string, string> = {
-    input,
-    agent_id: agentId,
-  };
-
-  if (conversationId) {
-    body.conversation_id = conversationId;
-  }
-
   try {
-    const agentResponse = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `ApiKey ${apiKey}`,
-        "kbn-xsrf": "true",
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!agentResponse.ok) {
-      const errorText = await agentResponse.text();
-      console.error("Elastic agent error:", agentResponse.status, errorText);
-      return NextResponse.json(
-        { error: `Agent returned ${agentResponse.status}: ${errorText}` },
-        { status: 502 }
-      );
-    }
-
-    const data: ElasticConverseResponse = await agentResponse.json();
-    const reply = data?.response?.message ?? "";
+    await ensureSession(sessionId);
+    const { reply } = await runAgent(sessionId, input);
 
     if (!reply) {
       return NextResponse.json(
@@ -151,10 +101,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({
-      reply,
-      conversationId: data.conversation_id,
-    });
+    return NextResponse.json({ reply, conversationId: sessionId });
   } catch (err) {
     console.error("Valuation API error:", err);
     return NextResponse.json(

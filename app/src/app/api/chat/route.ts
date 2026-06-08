@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import { parseAgentResponse } from "@/lib/parseAgentResponse";
+import { ensureSession, runAgent } from "@/lib/propertyAgent";
 
 /*
- * Proxies messages to the Elastic Agent Builder converse API:
- *   POST {KIBANA_URL}/api/agent_builder/converse
- *
- * Docs: https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/agent-builder-api-tutorial#step-11-chat-with-your-custom-agent
+ * Proxies search/analytics chat messages to the ADK agent (Gemini + Kibana MCP).
  *
  * Required environment variables:
- *   KIBANA_URL            – Your Kibana URL (e.g. https://<deployment>.kb.<region>.gcp.elastic.cloud)
- *   ELASTIC_AGENT_ID      – The agent ID created in Kibana Agent Builder
- *   ELASTIC_AGENT_API_KEY – A Kibana API key with agent builder permissions
+ *   GOOGLE_API_KEY            – Google AI Studio key (dev) or set
+ *                               GOOGLE_GENAI_USE_VERTEXAI=true + GOOGLE_CLOUD_PROJECT (prod)
+ *   KIBANA_URL                – Your Kibana URL for the MCP endpoint
+ *   ELASTIC_AGENT_API_KEY     – Kibana API key with feature_agentBuilder.read privilege
  *
- * Conversation history is managed server-side by Elastic. We only pass the
- * conversation_id returned from the first response to maintain context.
+ * Session history is managed in-process by ADK's InMemorySessionService.
+ * The conversationId maps 1:1 to an ADK session ID.
  */
 
 interface RequestBody {
@@ -21,79 +19,24 @@ interface RequestBody {
   conversationId: string | null;
 }
 
-interface ElasticConverseResponse {
-  conversation_id: string;
-  round_id: string;
-  status: string;
-  response: {
-    message: string;
-  };
-}
-
 export async function POST(request: Request) {
   const { message, conversationId }: RequestBody = await request.json();
 
-  const kibanaUrl = process.env.KIBANA_URL;
-  const agentId = process.env.ELASTIC_AGENT_ID;
-  const apiKey = process.env.ELASTIC_AGENT_API_KEY;
-
-  if (!kibanaUrl || !agentId || !apiKey) {
-    return NextResponse.json(
-      { error: "KIBANA_URL, ELASTIC_AGENT_ID and ELASTIC_AGENT_API_KEY must be configured" },
-      { status: 500 }
-    );
-  }
-
-  const endpoint = `${kibanaUrl.replace(/\/$/, "")}/api/agent_builder/converse`;
-
-  const body: Record<string, string> = {
-    input: message,
-    agent_id: agentId,
-  };
-
-  // Pass conversation_id on subsequent turns so the agent retains context
-  if (conversationId) {
-    body.conversation_id = conversationId;
-  }
+  // Reuse an existing session or create a new one
+  const sessionId = conversationId ?? crypto.randomUUID();
 
   try {
-    const agentResponse = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Kibana requires both ApiKey auth and the XSRF header on mutating requests
-        Authorization: `ApiKey ${apiKey}`,
-        "kbn-xsrf": "true",
-      },
-      body: JSON.stringify(body),
-    });
+    await ensureSession(sessionId);
+    const { reply, filters } = await runAgent(sessionId, message);
 
-    if (!agentResponse.ok) {
-      const errorText = await agentResponse.text();
-      console.error("Elastic agent error:", agentResponse.status, errorText);
-      return NextResponse.json(
-        { error: `Agent returned ${agentResponse.status}: ${errorText}` },
-        { status: 502 }
-      );
-    }
-
-    const data: ElasticConverseResponse = await agentResponse.json();
-    const rawContent = data?.response?.message ?? "";
-
-    if (!rawContent) {
+    if (!reply) {
       return NextResponse.json(
         { error: "Empty response from agent" },
         { status: 502 }
       );
     }
 
-    const { text, filters } = parseAgentResponse(rawContent);
-
-    return NextResponse.json({
-      reply: text,
-      filters,
-      conversationId: data.conversation_id,
-    });
+    return NextResponse.json({ reply, filters, conversationId: sessionId });
   } catch (err) {
     console.error("Chat API error:", err);
     return NextResponse.json(
