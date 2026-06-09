@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,11 @@ import {
   Building2,
   PawPrint,
   Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  Camera,
 } from "lucide-react";
+import Image from "next/image";
 import type { PropertyDoc } from "@/types";
 import { PropertyChat } from "@/components/PropertyChat";
 
@@ -46,12 +51,79 @@ function formatPsf(property: PropertyDoc): string | null {
   return null;
 }
 
+function getPropertyPhotos(property: PropertyDoc): string[] {
+  const base = "/images/properties";
+
+  if (property.property_category === "hdb") {
+    const exterior = [
+      `${base}/hdb-exterior-1.jpg`,
+      `${base}/hdb-exterior-2.jpg`,
+      `${base}/hdb-exterior-3.jpg`,
+    ];
+    const smallInterior = [`${base}/hdb-interior-small-1.jpg`];
+    const largeInterior = [
+      `${base}/hdb-interior-large-1.jpg`,
+      `${base}/hdb-interior-large-2.jpg`,
+    ];
+
+    if (
+      property.flat_type === "2-Room Flexi" ||
+      property.flat_type === "3-Room"
+    ) {
+      return [...exterior, ...smallInterior];
+    }
+    return [...exterior, ...largeInterior];
+  }
+
+  // Private property
+  const exterior = [
+    `${base}/private-exterior-1.jpg`,
+    `${base}/private-exterior-2.jpg`,
+  ];
+
+  if (property.unit_type === "Studio" || property.unit_type === "1 Bedroom") {
+    return [...exterior, `${base}/private-studio-1.jpg`, `${base}/private-studio-2.jpg`];
+  }
+  if (property.unit_type === "2 Bedroom" || property.unit_type === "3 Bedroom") {
+    return [
+      ...exterior,
+      `${base}/private-2bed-1.jpg`,
+      `${base}/private-2bed-2.jpg`,
+      `${base}/private-3bed-1.jpg`,
+    ];
+  }
+  if (property.unit_type === "4 Bedroom" || property.unit_type === "Penthouse") {
+    return [
+      ...exterior,
+      `${base}/private-penthouse-1.jpg`,
+      `${base}/private-penthouse-2.jpg`,
+      `${base}/private-penthouse-3.jpg`,
+    ];
+  }
+
+  return exterior;
+}
+
 export function PropertyModal({ property, onClose }: PropertyModalProps) {
+  const [photoIndex, setPhotoIndex] = useState(0);
+
+  useEffect(() => {
+    setPhotoIndex(0);
+  }, [property?._id]);
+
   if (!property) return null;
 
   const isRental = property.listing_type === "rental";
   const isHdb = property.property_category === "hdb";
   const psf = formatPsf(property);
+  const photos = getPropertyPhotos(property);
+
+  function prevPhoto() {
+    setPhotoIndex((i) => (i === 0 ? photos.length - 1 : i - 1));
+  }
+  function nextPhoto() {
+    setPhotoIndex((i) => (i === photos.length - 1 ? 0 : i + 1));
+  }
 
   return (
     <Dialog open={!!property} onOpenChange={(open) => !open && onClose()}>
@@ -194,6 +266,61 @@ export function PropertyModal({ property, onClose }: PropertyModalProps) {
                 </div>
               </>
             )}
+
+            {/* Photo gallery */}
+            <Separator className="my-3" />
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Camera className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">
+                  Photos ({photoIndex + 1}/{photos.length})
+                </p>
+              </div>
+              <div className="relative rounded-lg overflow-hidden bg-muted">
+                <div className="relative aspect-video w-full">
+                  <Image
+                    key={photos[photoIndex]}
+                    src={photos[photoIndex]}
+                    alt={`Property photo ${photoIndex + 1}`}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                  />
+                </div>
+                {photos.length > 1 && (
+                  <>
+                    <button
+                      onClick={prevPhoto}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                      aria-label="Previous photo"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={nextPhoto}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                      aria-label="Next photo"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+                      {photos.map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setPhotoIndex(i)}
+                          className={`h-1.5 rounded-full transition-all ${
+                            i === photoIndex
+                              ? "w-4 bg-white"
+                              : "w-1.5 bg-white/50 hover:bg-white/75"
+                          }`}
+                          aria-label={`Go to photo ${i + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
