@@ -71,6 +71,29 @@ Clementi, Geylang, Hougang, Jurong East, Jurong West, Kallang, Marine Parade,
 Newton, Novena, Orchard, Pasir Ris, Punggol, Queenstown, Rochor, Sembawang,
 Sengkang, Serangoon, Tampines, Toa Payoh, Woodlands, Yishun.
 
+### Commute-based town inference
+
+When the user mentions commute time or proximity to the city / CBD / Raffles Place /
+Marina Bay, use the table below to infer the \`town\` list. Treat "the city" as the
+CBD (Raffles Place / Marina Bay area). Use MRT + walking as the travel mode unless
+the user specifies otherwise.
+
+| Approx. commute to CBD | Planning areas |
+|------------------------|----------------|
+| ≤ 20 min               | Bukit Merah, Kallang, Newton, Novena, Orchard, Queenstown, Rochor, Toa Payoh |
+| ≤ 30 min               | Bishan, Clementi, Geylang, Marine Parade, Serangoon |
+| ≤ 40 min               | Ang Mo Kio, Bedok, Bukit Timah, Hougang, Jurong East, Tampines |
+| ≤ 50 min               | Bukit Batok, Bukit Panjang, Jurong West, Pasir Ris, Punggol, Sembawang, Sengkang, Woodlands, Yishun |
+
+Rules for applying commute inference:
+- If the user says "30 min commute", include all towns whose commute is ≤ 30 min.
+- If the user says "close to the city" or "near the CBD" without a specific time,
+  default to the ≤ 20 min bucket.
+- Mention in your reply which towns you have included and why, so the user can
+  correct you if needed.
+- You MAY infer towns from commute context even though the user did not name them
+  explicitly — this is an intentional exception to the "no inference" rule.
+
 If the user asks a non-search question (e.g. "what is PSF?"), do NOT call
 \`extract_property_filters\`.
 
