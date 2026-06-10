@@ -207,5 +207,43 @@ export function MapView({ properties, selectedId, onSelect }: MapViewProps) {
     }
   }, [selectedId]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return (
+    <div className="relative w-full h-full">
+      <div ref={containerRef} className="w-full h-full" />
+      {/* Price colour legend */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 1000,
+          background: "rgba(255,255,255,0.92)",
+          backdropFilter: "blur(4px)",
+          borderRadius: 8,
+          padding: "6px 12px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          pointerEvents: "none",
+          fontSize: 11,
+          color: "#444",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span>Lower price</span>
+        <div
+          style={{
+            width: 96,
+            height: 10,
+            borderRadius: 5,
+            background: "linear-gradient(to right, hsl(120,80%,40%), hsl(60,80%,40%), hsl(30,80%,40%), hsl(0,80%,40%))",
+            flexShrink: 0,
+          }}
+        />
+        <span>Higher price</span>
+      </div>
+    </div>
+  );
 }
