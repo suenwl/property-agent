@@ -300,9 +300,8 @@ PRIVATE_UNIT_TYPES = [
     {"unit_type": "Penthouse", "bedrooms": 4, "sqft_range": (2000, 3500)},
 ]
 
-FURNISHING_OPTIONS   = ["Unfurnished", "Partially Furnished", "Fully Furnished"]
-TENURE_OPTIONS       = ["99-Year Leasehold", "999-Year Leasehold", "Freehold"]
-FLOOR_LEVEL_OPTIONS  = ["Low (1-5)", "Mid (6-15)", "High (16-25)", "Very High (26+)"]
+FURNISHING_OPTIONS = ["Unfurnished", "Partially Furnished", "Fully Furnished"]
+TENURE_OPTIONS     = ["99-Year Leasehold", "999-Year Leasehold", "Freehold"]
 
 # ---------------------------------------------------------------------------
 # Pricing helpers
@@ -362,24 +361,36 @@ def _random_block() -> str:
     return str(random.randint(1, 999))
 
 
-def _random_unit() -> str:
-    return f"#{random.randint(1, 30):02d}-{random.randint(1, 30):02d}"
-
-
 def _random_postal() -> str:
     return f"{random.randint(100000, 829999):06d}"
 
 
-def make_hdb_address(area: dict) -> str:
+def _floor_to_level(floor: int) -> str:
+    if floor <= 5:
+        return "Low (1-5)"
+    if floor <= 15:
+        return "Mid (6-15)"
+    if floor <= 25:
+        return "High (16-25)"
+    return "Very High (26+)"
+
+
+def _random_floor(max_floor: int = 30) -> int:
+    return random.randint(1, max_floor)
+
+
+def make_hdb_address(area: dict, floor: int) -> str:
+    unit = f"#{floor:02d}-{random.randint(1, 999):03d}"
     return (
-        f"Block {_random_block()} {random.choice(area['streets'])}, "
+        f"Block {_random_block()} {random.choice(area['streets'])} {unit}, "
         f"Singapore {_random_postal()}"
     )
 
 
-def make_private_address(area: dict, condo_name: str) -> str:
+def make_private_address(area: dict, condo_name: str, floor: int) -> str:
+    unit = f"#{floor:02d}-{random.randint(1, 30):02d}"
     return (
-        f"{_random_unit()} {condo_name}, "
+        f"{unit} {condo_name}, "
         f"{random.choice(area['streets'])}, "
         f"Singapore {_random_postal()}"
     )
@@ -410,6 +421,7 @@ def generate_rental_hdb(area: dict) -> dict | None:
     sqft       = random.randint(*flat_type["sqft_range"])
     price_pm   = hdb_rental_price(flat_type, area["name_upper"])
     listing_id = f"RENT-HDB-{uuid.uuid4().hex[:10].upper()}"
+    floor      = _random_floor(max_floor=40)
 
     listing = _base_listing(listing_id, area, built_year)
     listing.update({
@@ -417,14 +429,14 @@ def generate_rental_hdb(area: dict) -> dict | None:
         "property_category": "hdb",
         "flat_type":         flat_type["flat_type"],
         "hdb_estate":        random.choice(area["hdb_estates"]),
-        "address":           make_hdb_address(area),
+        "address":           make_hdb_address(area, floor),
         "bedrooms":          flat_type["bedrooms"],
         "bathrooms":         max(1, flat_type["bedrooms"] - 1),
         "size_sqft":         sqft,
         "price_per_month":   price_pm,
         "psf_per_month":     round(price_pm / sqft, 2),
         "furnishing":        random.choice(FURNISHING_OPTIONS),
-        "floor_level":       random.choice(FLOOR_LEVEL_OPTIONS),
+        "floor_level":       _floor_to_level(floor),
         "available_from":    f"2025-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}",
         "min_lease_months":  random.choice([12, 24]),
         "pets_allowed":      random.choice([True, False]),
@@ -443,6 +455,7 @@ def generate_rental_private(area: dict) -> dict | None:
     sqft       = random.randint(*unit_type["sqft_range"])
     price_pm   = private_rental_price(unit_type, area["name_upper"])
     listing_id = f"RENT-PVT-{uuid.uuid4().hex[:10].upper()}"
+    floor      = _random_floor(max_floor=30)
 
     listing = _base_listing(listing_id, area, built_year)
     listing.update({
@@ -450,14 +463,14 @@ def generate_rental_private(area: dict) -> dict | None:
         "property_category": "private",
         "property_name":     condo_name,
         "unit_type":         unit_type["unit_type"],
-        "address":           make_private_address(area, condo_name),
+        "address":           make_private_address(area, condo_name, floor),
         "bedrooms":          unit_type["bedrooms"],
         "bathrooms":         max(1, unit_type["bedrooms"]),
         "size_sqft":         sqft,
         "price_per_month":   price_pm,
         "psf_per_month":     round(price_pm / sqft, 2),
         "furnishing":        random.choice(FURNISHING_OPTIONS),
-        "floor_level":       random.choice(FLOOR_LEVEL_OPTIONS),
+        "floor_level":       _floor_to_level(floor),
         "available_from":    f"2025-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}",
         "min_lease_months":  random.choice([12, 24]),
         "pets_allowed":      random.choice([True, False]),
@@ -480,6 +493,7 @@ def generate_sale_hdb(area: dict) -> dict | None:
     sqft       = random.randint(*flat_type["sqft_range"])
     price      = hdb_sale_price(flat_type, area["name_upper"], built_year)
     listing_id = f"SALE-HDB-{uuid.uuid4().hex[:10].upper()}"
+    floor      = _random_floor(max_floor=40)
 
     listing = _base_listing(listing_id, area, built_year)
     listing.update({
@@ -487,7 +501,7 @@ def generate_sale_hdb(area: dict) -> dict | None:
         "property_category":     "hdb",
         "flat_type":             flat_type["flat_type"],
         "hdb_estate":            random.choice(area["hdb_estates"]),
-        "address":               make_hdb_address(area),
+        "address":               make_hdb_address(area, floor),
         "bedrooms":              flat_type["bedrooms"],
         "bathrooms":             max(1, flat_type["bedrooms"] - 1),
         "size_sqft":             sqft,
@@ -495,7 +509,7 @@ def generate_sale_hdb(area: dict) -> dict | None:
         "price_per_sqft":        round(price / sqft, 2),
         "remaining_lease_years": max(1, 99 - (2025 - built_year)),
         "furnishing":            random.choice(FURNISHING_OPTIONS),
-        "floor_level":           random.choice(FLOOR_LEVEL_OPTIONS),
+        "floor_level":           _floor_to_level(floor),
         "tenure":                "99-Year Leasehold",
         "ethnic_quota_met":      random.choice([True, False]),
         "hdb_grant_eligible":    True,
