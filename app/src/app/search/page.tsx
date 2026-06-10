@@ -6,6 +6,7 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { FiltersPanel } from "@/components/FiltersPanel";
 import { PropertyList } from "@/components/PropertyList";
 import { PropertyModal } from "@/components/PropertyModal";
+import { UserMenu } from "@/components/UserMenu";
 import type { ChatMessage, FilterState, PropertyDoc } from "@/types";
 
 // Map must be dynamically imported — Leaflet requires browser APIs
@@ -150,6 +151,9 @@ export default function SearchPage() {
           <span className="font-semibold text-sm tracking-tight">
             PropertyAgent
           </span>
+          <div className="ml-auto">
+            <UserMenu />
+          </div>
         </div>
 
         {/* Chat */}

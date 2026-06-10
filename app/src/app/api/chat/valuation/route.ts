@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PropertyDoc } from "@/types";
-import { ensureSession, runAgent } from "@/lib/propertyAgent";
+import { ensureSession, runAgent, runAgentWithCalendar } from "@/lib/propertyAgent";
+import { auth } from "@/auth";
 
 /*
  * Proxies property-valuation questions to the ADK agent (Gemini + Kibana MCP).
@@ -77,9 +78,12 @@ function buildPropertyContext(property: PropertyDoc): string {
 }
 
 export async function POST(request: Request) {
-  const { message, conversationId, property }: RequestBody =
-    await request.json();
+  const [{ message, conversationId, property }, session] = await Promise.all([
+    request.json() as Promise<RequestBody>,
+    auth(),
+  ]);
 
+  const googleAccessToken = session?.accessToken;
   const sessionId = conversationId ?? crypto.randomUUID();
 
   // On the first turn, prepend the property context so the agent has full
@@ -91,8 +95,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    await ensureSession(sessionId);
-    const { reply } = await runAgent(sessionId, input);
+    await ensureSession(sessionId, googleAccessToken);
+    const { reply } = googleAccessToken
+      ? await runAgentWithCalendar(sessionId, input, googleAccessToken)
+      : await runAgent(sessionId, input);
 
     if (!reply) {
       return NextResponse.json(

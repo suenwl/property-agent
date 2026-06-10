@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSession, signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SendHorizonal, Bot, User, Loader2, Sparkles } from "lucide-react";
+import { SendHorizonal, Bot, User, Loader2, Sparkles, CalendarPlus, LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, PropertyDoc } from "@/types";
 
@@ -13,17 +14,21 @@ interface PropertyChatProps {
   property: PropertyDoc;
 }
 
-const STARTER_PROMPTS = [
+const VALUATION_PROMPTS = [
   "Is this property priced fairly?",
   "What factors are driving this listing's price?",
   "What would be a fair price for this property?",
 ];
 
 export function PropertyChat({ property }: PropertyChatProps) {
+  const { data: session } = useSession();
+  const isGoogleSignedIn = !!session?.accessToken;
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [showSignInNudge, setShowSignInNudge] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Reset conversation whenever a different property is opened
@@ -32,6 +37,7 @@ export function PropertyChat({ property }: PropertyChatProps) {
     setInput("");
     setIsLoading(false);
     setConversationId(null);
+    setShowSignInNudge(false);
   }, [property._id]);
 
   useEffect(() => {
@@ -106,7 +112,7 @@ export function PropertyChat({ property }: PropertyChatProps) {
                 Ask the agent to evaluate this listing
               </p>
               <div className="flex flex-col gap-1.5">
-                {STARTER_PROMPTS.map((prompt) => (
+                {VALUATION_PROMPTS.map((prompt) => (
                   <button
                     key={prompt}
                     onClick={() => void sendMessage(prompt)}
@@ -116,6 +122,37 @@ export function PropertyChat({ property }: PropertyChatProps) {
                     {prompt}
                   </button>
                 ))}
+
+                {/* Booking prompt */}
+                <button
+                  onClick={() => {
+                    if (isGoogleSignedIn) {
+                      setShowSignInNudge(false);
+                      void sendMessage("Book me a viewing with this property");
+                    } else {
+                      setShowSignInNudge(true);
+                    }
+                  }}
+                  disabled={isLoading}
+                  className="text-left text-xs px-3 py-2 rounded-lg border border-dashed hover:bg-muted/60 hover:border-solid transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <CalendarPlus className="h-3 w-3 flex-shrink-0" />
+                  Book me a viewing with this property
+                </button>
+
+                {/* Sign-in nudge shown only when user clicks booking prompt without being signed in */}
+                {showSignInNudge && (
+                  <div className="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                    <LogIn className="h-3 w-3 flex-shrink-0" />
+                    <span>Sign in with Google to book viewings</span>
+                    <button
+                      onClick={() => signIn("google")}
+                      className="ml-auto text-primary hover:underline font-medium whitespace-nowrap"
+                    >
+                      Sign in
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

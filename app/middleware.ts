@@ -5,7 +5,7 @@ import { jwtVerify } from "jose";
 const SESSION_COOKIE = "session";
 
 // Public paths that don't require authentication
-const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth"];
 
 export async function middleware(request: NextRequest) {
   // Auth is disabled in development

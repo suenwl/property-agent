@@ -8,6 +8,7 @@ import {
 } from "@google/adk";
 import { Type } from "@google/genai";
 import type { FilterState } from "@/types";
+import { getFreeSlotsNextNDays, createViewingEvent } from "@/lib/google-calendar";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -200,6 +201,47 @@ repeat them.
   rentals in Bishan of similar size").
 - If no [Property Context] block is present, treat the conversation as Mode 2
   (market analytics).
+
+---
+
+## Mode 4 — Property Viewing Booking
+
+When the user asks to book a viewing (e.g. "Book me a viewing", "Schedule a visit",
+"I'd like to see this property"), follow this exact flow:
+
+1. **Find free slots** — Call \`get_free_slots\` with \`days_ahead\` = 14.
+   - Slots are only offered between 9am and 9pm SGT — never suggest times outside this window.
+   - If the tool returns no slots, apologise and suggest the user check their calendar
+     and try again.
+   - If the tool returns an error mentioning sign-in, tell the user they need to sign
+     in with Google to use calendar booking.
+
+2. **Present the options** — List the available slots clearly (numbered), and ask the
+   user which one they prefer. Example:
+   > Here are some times when you're free for a viewing:
+   > 1. Tue, 10 Jun · 10:00am – 11:00am
+   > 2. Tue, 10 Jun · 2:00pm – 3:00pm
+   > ...
+   > Which slot works best for you?
+
+3. **Confirm before booking** — Once the user picks a slot, repeat the chosen time and
+   property name back to them and ask for confirmation before calling
+   \`create_viewing_event\`. Example:
+   > Just to confirm — you'd like to book a viewing for **[Property Name]** at
+   > **[Address]** on **[chosen time]**. Shall I go ahead?
+
+4. **Create the event** — When the user confirms, call \`create_viewing_event\` with
+   the property name, address, and the ISO start time of the chosen slot.
+
+5. **Confirm success** — After the tool succeeds, confirm the booking:
+   > Done! I've added a viewing for **[Property Name]** on **[Date & Time]** to your
+   > Google Calendar. You'll receive a reminder 1 hour before.
+
+### Booking rules
+- **Never call \`extract_property_filters\` or Elasticsearch tools in booking mode.**
+- Always use the property name and address from the [Property Context] block if present.
+- Only book one event per confirmation — do not create duplicate events.
+- If \`create_viewing_event\` returns an error, tell the user and suggest they try again.
 `.trim();
 
 // ---------------------------------------------------------------------------
@@ -264,6 +306,85 @@ const extractFiltersTool = new FunctionTool({
 });
 
 // ---------------------------------------------------------------------------
+// Calendar tools factory — built per-session with the user's OAuth token
+// ---------------------------------------------------------------------------
+
+function buildCalendarTools(accessToken: string): FunctionTool[] {
+  const getFreeSlotsToolDef = new FunctionTool({
+    name: "get_free_slots",
+    description:
+      "Returns a list of available 1-hour viewing time slots from the user's Google Calendar " +
+      "within the next N days. Call this before presenting booking options to the user.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        days_ahead: {
+          type: Type.NUMBER,
+          description: "How many calendar days ahead to look for free slots (1–30).",
+        },
+      },
+      required: ["days_ahead"],
+    },
+    execute: async (args: unknown) => {
+      const a = args as Record<string, unknown>;
+      const days = Math.min(Math.max(Number(a.days_ahead) || 14, 1), 30);
+      try {
+        const slots = await getFreeSlotsNextNDays(accessToken, days);
+        if (slots.length === 0) {
+          return { slots: [], message: "No free 1-hour slots found in the requested period." };
+        }
+        return { slots: slots.map((s, i) => ({ index: i + 1, label: s.label, startIso: s.startIso })) };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { error: msg };
+      }
+    },
+  });
+
+  const createViewingEventToolDef = new FunctionTool({
+    name: "create_viewing_event",
+    description:
+      "Creates a 1-hour property viewing appointment on the user's Google Calendar. " +
+      "Only call this after the user has explicitly confirmed the booking details.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        property_name: {
+          type: Type.STRING,
+          description: "The name or title of the property to view.",
+        },
+        property_address: {
+          type: Type.STRING,
+          description: "The full address of the property.",
+        },
+        start_datetime_iso: {
+          type: Type.STRING,
+          description: "The ISO 8601 start datetime of the viewing slot (e.g. 2025-06-15T10:00:00.000Z).",
+        },
+      },
+      required: ["property_name", "property_address", "start_datetime_iso"],
+    },
+    execute: async (args: unknown) => {
+      const a = args as Record<string, unknown>;
+      try {
+        const result = await createViewingEvent(
+          accessToken,
+          String(a.property_name),
+          String(a.property_address),
+          String(a.start_datetime_iso)
+        );
+        return { success: true, eventLink: result.eventLink };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: msg };
+      }
+    },
+  });
+
+  return [getFreeSlotsToolDef, createViewingEventToolDef];
+}
+
+// ---------------------------------------------------------------------------
 // Runner singleton
 // ---------------------------------------------------------------------------
 
@@ -305,16 +426,61 @@ function getRunner(): InMemoryRunner {
   return _runner;
 }
 
+// Per-session runners for calendar-enabled conversations.
+// Map key: sessionId. Each entry holds the runner built for that session's token.
+const _calendarRunners = new Map<string, InMemoryRunner>();
+
+function getCalendarRunner(sessionId: string, accessToken: string): InMemoryRunner {
+  if (_calendarRunners.has(sessionId)) {
+    return _calendarRunners.get(sessionId)!;
+  }
+
+  const kibanaUrl = process.env.KIBANA_URL;
+  const elasticApiKey = process.env.ELASTIC_AGENT_API_KEY;
+
+  if (!kibanaUrl || !elasticApiKey) {
+    throw new Error("KIBANA_URL and ELASTIC_AGENT_API_KEY must be configured");
+  }
+
+  const mcpUrl = `${kibanaUrl.replace(/\/$/, "")}/api/agent_builder/mcp`;
+
+  const mcpToolset = new MCPToolset({
+    type: "StreamableHTTPConnectionParams",
+    url: mcpUrl,
+    transportOptions: {
+      requestInit: {
+        headers: { Authorization: `ApiKey ${elasticApiKey}` },
+      },
+    },
+  });
+
+  const agent = new Agent({
+    name: "property_agent_calendar",
+    model: "gemini-2.5-flash",
+    instruction: AGENT_INSTRUCTION,
+    tools: [mcpToolset, extractFiltersTool, ...buildCalendarTools(accessToken)],
+  });
+
+  const runner = new InMemoryRunner({ agent, appName: APP_NAME });
+  _calendarRunners.set(sessionId, runner);
+  return runner;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
  * Ensures a session exists for the given sessionId. Creates it if it does not.
- * Call this once before the first runAgent() call for a new conversation.
+ * Pass googleAccessToken to create a calendar-enabled session.
  */
-export async function ensureSession(sessionId: string): Promise<void> {
-  const runner = getRunner();
+export async function ensureSession(
+  sessionId: string,
+  googleAccessToken?: string
+): Promise<void> {
+  const runner = googleAccessToken
+    ? getCalendarRunner(sessionId, googleAccessToken)
+    : getRunner();
   await runner.sessionService.getOrCreateSession({
     appName: APP_NAME,
     userId: USER_ID,
@@ -323,14 +489,13 @@ export async function ensureSession(sessionId: string): Promise<void> {
 }
 
 /**
- * Runs the agent with the given message in the specified session.
- * Returns the agent's text reply and any property filters extracted via tool call.
+ * Shared inner loop — drives a runner and returns reply + filters.
  */
-export async function runAgent(
+async function driveRunner(
+  runner: InMemoryRunner,
   sessionId: string,
   message: string
 ): Promise<{ reply: string; filters: FilterState | null }> {
-  const runner = getRunner();
 
   const events = runner.runAsync({
     userId: USER_ID,
@@ -395,4 +560,26 @@ export async function runAgent(
   }
 
   return { reply, filters };
+}
+
+/**
+ * Runs the agent (base, no calendar tools) with the given message.
+ */
+export async function runAgent(
+  sessionId: string,
+  message: string
+): Promise<{ reply: string; filters: FilterState | null }> {
+  return driveRunner(getRunner(), sessionId, message);
+}
+
+/**
+ * Runs the calendar-enabled agent variant for a session that has a Google token.
+ * The runner (with bound calendar tools) was already created in ensureSession.
+ */
+export async function runAgentWithCalendar(
+  sessionId: string,
+  message: string,
+  googleAccessToken: string
+): Promise<{ reply: string; filters: FilterState | null }> {
+  return driveRunner(getCalendarRunner(sessionId, googleAccessToken), sessionId, message);
 }
