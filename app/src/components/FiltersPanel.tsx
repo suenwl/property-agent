@@ -158,6 +158,7 @@ export function FiltersPanel({
           onValueChange={(v) =>
             update({ listing_type: v === "" ? null : (v as FilterState["listing_type"]) })
           }
+          items={{ rental: "Rental", sale: "For Sale" }}
         >
           <SelectTrigger className="h-7 text-xs w-[110px]">
             <SelectValue placeholder="Listing type" />
@@ -175,6 +176,7 @@ export function FiltersPanel({
           onValueChange={(v) =>
             update({ property_category: v === "" ? null : (v as FilterState["property_category"]) })
           }
+          items={{ hdb: "HDB", private: "Private" }}
         >
           <SelectTrigger className="h-7 text-xs w-[120px]">
             <SelectValue placeholder="Property type" />
@@ -192,6 +194,7 @@ export function FiltersPanel({
           onValueChange={(v) =>
             update({ bedrooms_min: v === "" ? null : Number(v) })
           }
+          items={{ "1": "1+ bed", "2": "2+ beds", "3": "3+ beds", "4": "4+ beds", "5": "5+ beds" }}
         >
           <SelectTrigger className="h-7 text-xs w-[120px]">
             <SelectValue placeholder="Bedrooms" />
@@ -213,6 +216,7 @@ export function FiltersPanel({
             onValueChange={(v) =>
               update({ price_per_month_max: v === "" ? null : Number(v) })
             }
+            items={{ "2000": "Up to $2,000", "3000": "Up to $3,000", "4000": "Up to $4,000", "5000": "Up to $5,000", "7000": "Up to $7,000", "10000": "Up to $10,000" }}
           >
             <SelectTrigger className="h-7 text-xs w-[130px]">
               <SelectValue placeholder="Max rent/month" />
@@ -236,6 +240,7 @@ export function FiltersPanel({
             onValueChange={(v) =>
               update({ price_max: v === "" ? null : Number(v) })
             }
+            items={{ "500000": "Up to $500K", "800000": "Up to $800K", "1000000": "Up to $1M", "1500000": "Up to $1.5M", "2000000": "Up to $2M", "3000000": "Up to $3M" }}
           >
             <SelectTrigger className="h-7 text-xs w-[140px]">
               <SelectValue placeholder="Max sale price" />
@@ -312,6 +317,7 @@ export function FiltersPanel({
             onValueChange={(v) =>
               update({ pets_allowed: v === "" ? null : v === "true" })
             }
+            items={{ "true": "Pets OK", "false": "No pets" }}
           >
             <SelectTrigger className="h-7 text-xs w-[110px]">
               <SelectValue placeholder="Pets allowed" />

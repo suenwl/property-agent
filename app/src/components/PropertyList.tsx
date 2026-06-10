@@ -1,11 +1,72 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Bed, Bath, Maximize2, MapPin, Loader2, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PropertyDoc } from "@/types";
+
+// ─── Sort ─────────────────────────────────────────────────────────────────────
+
+type SortOrder =
+  | "recommended"
+  | "price_asc"
+  | "price_desc"
+  | "psf_asc"
+  | "psf_desc"
+  | "size_asc"
+  | "size_desc";
+
+const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
+  { value: "recommended", label: "Recommended" },
+  { value: "price_asc", label: "Price (lowest first)" },
+  { value: "price_desc", label: "Price (highest first)" },
+  { value: "psf_asc", label: "PSF (lowest)" },
+  { value: "psf_desc", label: "PSF (highest)" },
+  { value: "size_asc", label: "Size (smallest)" },
+  { value: "size_desc", label: "Size (largest)" },
+];
+
+function getPrice(p: PropertyDoc): number {
+  if (p.listing_type === "rental") return p.price_per_month ?? Infinity;
+  return p.price ?? Infinity;
+}
+
+function getPsf(p: PropertyDoc): number {
+  const v =
+    p.listing_type === "rental" ? p.psf_per_month : p.price_per_sqft;
+  return v != null && v > 0 ? v : Infinity;
+}
+
+function sortProperties(
+  properties: PropertyDoc[],
+  order: SortOrder
+): PropertyDoc[] {
+  if (order === "recommended") return properties;
+  const arr = [...properties];
+  switch (order) {
+    case "price_asc":
+      return arr.sort((a, b) => getPrice(a) - getPrice(b));
+    case "price_desc":
+      return arr.sort((a, b) => getPrice(b) - getPrice(a));
+    case "psf_asc":
+      return arr.sort((a, b) => getPsf(a) - getPsf(b));
+    case "psf_desc":
+      return arr.sort((a, b) => getPsf(b) - getPsf(a));
+    case "size_asc":
+      return arr.sort((a, b) => a.size_sqft - b.size_sqft);
+    case "size_desc":
+      return arr.sort((a, b) => b.size_sqft - a.size_sqft);
+  }
+}
 
 // ─── Recommendation logic ────────────────────────────────────────────────────
 
@@ -239,6 +300,8 @@ export function PropertyList({
   isLoading,
   onSelect,
 }: PropertyListProps) {
+  const [sortOrder, setSortOrder] = useState<SortOrder>("recommended");
+
   const recommendationMap = useMemo(
     () => computeRecommendations(properties),
     [properties]
@@ -247,7 +310,6 @@ export function PropertyList({
   const { recommended, regular } = useMemo(() => {
     const MAX_RECOMMENDED = 3;
 
-    // Score by number of reasons, then pick the top MAX_RECOMMENDED
     const candidates = properties
       .map((p) => ({ p, reasons: recommendationMap.get(p._id) ?? [] }))
       .filter(({ reasons }) => reasons.length > 0)
@@ -262,6 +324,11 @@ export function PropertyList({
     return { recommended: rec, regular: reg };
   }, [properties, recommendationMap]);
 
+  const sortedAll = useMemo(
+    () => sortProperties(properties, sortOrder),
+    [properties, sortOrder]
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -272,61 +339,119 @@ export function PropertyList({
 
   if (properties.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-        No properties match the current filters.
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-3 py-2 border-b">
+          <span className="text-xs text-muted-foreground">Sort by</span>
+          <SortSelect value={sortOrder} onChange={setSortOrder} />
+        </div>
+        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+          No properties match the current filters.
+        </div>
       </div>
     );
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="p-3 space-y-2">
-        {/* Recommended section */}
-        {recommended.length > 0 && (
-          <>
-            <div className="flex items-center gap-1.5 px-0.5 pt-1 pb-0.5">
-              <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
-              <span className="text-xs font-semibold text-foreground">
-                Recommended
-              </span>
-              <span className="text-xs text-muted-foreground">
-                ({recommended.length})
-              </span>
-            </div>
-            {recommended.map((p) => (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Sort bar */}
+      <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0">
+        <span className="text-xs text-muted-foreground">
+          {properties.length} listing{properties.length !== 1 ? "s" : ""}
+        </span>
+        <SortSelect value={sortOrder} onChange={setSortOrder} />
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-hidden">
+      <ScrollArea className="h-full">
+        <div className="p-3 space-y-2">
+          {sortOrder === "recommended" ? (
+            <>
+              {/* Recommended section */}
+              {recommended.length > 0 && (
+                <>
+                  <div className="flex items-center gap-1.5 px-0.5 pt-1 pb-0.5">
+                    <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
+                    <span className="text-xs font-semibold text-foreground">
+                      Recommended
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({recommended.length})
+                    </span>
+                  </div>
+                  {recommended.map((p) => (
+                    <PropertyCard
+                      key={p._id}
+                      property={p}
+                      isSelected={p._id === selectedId}
+                      recommendationReasons={
+                        recommendationMap.get(p._id) ?? []
+                      }
+                      onClick={() => onSelect(p)}
+                    />
+                  ))}
+                  {regular.length > 0 && (
+                    <div className="flex items-center gap-2 px-0.5 pt-2 pb-0.5">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-xs text-muted-foreground">
+                        All listings ({regular.length})
+                      </span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Regular listings */}
+              {regular.map((p) => (
+                <PropertyCard
+                  key={p._id}
+                  property={p}
+                  isSelected={p._id === selectedId}
+                  recommendationReasons={[]}
+                  onClick={() => onSelect(p)}
+                />
+              ))}
+            </>
+          ) : (
+            /* Sorted flat list */
+            sortedAll.map((p) => (
               <PropertyCard
                 key={p._id}
                 property={p}
                 isSelected={p._id === selectedId}
-                recommendationReasons={
-                  recommendationMap.get(p._id) ?? []
-                }
+                recommendationReasons={recommendationMap.get(p._id) ?? []}
                 onClick={() => onSelect(p)}
               />
-            ))}
-            {regular.length > 0 && (
-              <div className="flex items-center gap-2 px-0.5 pt-2 pb-0.5">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted-foreground">
-                  All listings ({regular.length})
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Regular listings */}
-        {regular.map((p) => (
-          <PropertyCard
-            key={p._id}
-            property={p}
-            isSelected={p._id === selectedId}
-            recommendationReasons={[]}
-            onClick={() => onSelect(p)}
-          />
-        ))}
+            ))
+          )}
+        </div>
+      </ScrollArea>
       </div>
-    </ScrollArea>
+    </div>
+  );
+}
+
+// ─── SortSelect ───────────────────────────────────────────────────────────────
+
+function SortSelect({
+  value,
+  onChange,
+}: {
+  value: SortOrder;
+  onChange: (v: SortOrder) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as SortOrder)} items={SORT_OPTIONS}>
+      <SelectTrigger size="sm" className="w-[160px] text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        {SORT_OPTIONS.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value} className="text-xs">
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
