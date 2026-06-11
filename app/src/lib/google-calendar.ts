@@ -65,8 +65,6 @@ export async function getFreeSlotsNextNDays(
   // We start from the next full hour if we're already past 9am today SGT.
   const sgtNow = toSGT(now);
 
-  // Determine the first candidate date (SGT midnight = UTC 16:00 previous day)
-  const sgtOffsetMs = 8 * 60 * 60 * 1000;
   const candidateStarts: Date[] = [];
 
   for (let d = 0; d < days; d++) {
@@ -74,8 +72,8 @@ export async function getFreeSlotsNextNDays(
     const sgtDay = new Date(sgt0OfDay(sgtNow, d));
 
     for (let h = SLOT_HOUR_START; h < SLOT_HOUR_END; h++) {
-      // Convert SGT hour back to UTC for the API call
-      const slotStartUtc = new Date(sgtDay.getTime() + h * 60 * 60 * 1000 - sgtOffsetMs);
+      // sgtDay is already the UTC timestamp for SGT midnight; add hours directly
+      const slotStartUtc = new Date(sgtDay.getTime() + h * 60 * 60 * 1000);
 
       // Skip slots in the past (with a 30-min buffer)
       if (slotStartUtc.getTime() < now.getTime() + 30 * 60 * 1000) continue;
